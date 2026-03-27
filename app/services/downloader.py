@@ -30,6 +30,8 @@ class VideoDownloader:
         """
         if "tiktok.com" in url.lower():
             raise Exception("TikTok is not supported.")
+        if "youtube.com" in url.lower() or "youtu.be" in url.lower():
+            raise Exception("YouTube downloads are temporarily disabled.")
             
         # Strategy: Try to extract info with current ydl_opts.
         # If it fails due to auth/cookies, we might try to report that specifically.
