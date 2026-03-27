@@ -25,9 +25,21 @@ class VideoDownloader:
             }
         }
         
-        cookies_path = os.path.join(os.getcwd(), 'cookies.txt')
-        if os.path.exists(cookies_path):
-            self.ydl_opts['cookiefile'] = cookies_path
+        # Check for cookies in Environment Variable first (Ideal for Vercel/Servers)
+        env_cookies = os.environ.get("YTDLP_COOKIES")
+        if env_cookies:
+            import tempfile
+            # Create a temporary file and write the cookies to it
+            fd, temp_path = tempfile.mkstemp(suffix=".txt", text=True)
+            with os.fdopen(fd, 'w') as f:
+                # Replace escaped newlines with actual newlines if user pasted a single line string
+                f.write(env_cookies.replace('\\n', '\n'))
+            self.ydl_opts['cookiefile'] = temp_path
+        else:
+            # Fallback to local cookies.txt file
+            cookies_path = os.path.join(os.getcwd(), 'cookies.txt')
+            if os.path.exists(cookies_path):
+                self.ydl_opts['cookiefile'] = cookies_path
 
     def get_video_info(self, url: str) -> Dict[str, Any]:
         """
