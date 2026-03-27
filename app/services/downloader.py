@@ -1,5 +1,6 @@
 import yt_dlp
 from typing import Dict, Any
+import os
 
 class VideoDownloader:
     def __init__(self):
@@ -23,6 +24,10 @@ class VideoDownloader:
                 }
             }
         }
+        
+        cookies_path = os.path.join(os.getcwd(), 'cookies.txt')
+        if os.path.exists(cookies_path):
+            self.ydl_opts['cookiefile'] = cookies_path
 
     def get_video_info(self, url: str) -> Dict[str, Any]:
         """
