@@ -16,6 +16,11 @@ class VideoDownloader:
                 'Sec-Ch-Ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
                 'Sec-Ch-Ua-Mobile': '?0',
                 'Sec-Ch-Ua-Platform': '"Windows"',
+            },
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'web']
+                }
             }
         }
 
@@ -36,6 +41,8 @@ class VideoDownloader:
             error_msg = str(e)
             if "Instagram sent an empty media response" in error_msg or "login" in error_msg.lower():
                  raise Exception("Instagram/Facebook requires authentication.")
+            if "Sign in to confirm" in error_msg:
+                 raise Exception("YouTube blocked the request. Please try again later.")
                 
             raise Exception(f"Failed to extract video info: {error_msg}")
 
