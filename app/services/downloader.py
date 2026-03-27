@@ -1,8 +1,6 @@
 import yt_dlp
 from typing import Dict, Any
 
-import os
-
 class VideoDownloader:
     def __init__(self):
         # Base options for yt-dlp to extract info quickly without downloading
@@ -20,23 +18,6 @@ class VideoDownloader:
                 'Sec-Ch-Ua-Platform': '"Windows"',
             }
         }
-        
-        # Automatically use cookies.txt if it exists (for production)
-        cookies_path = os.path.join(os.getcwd(), 'cookies.txt')
-        if os.path.exists(cookies_path):
-            self.ydl_opts['cookiefile'] = cookies_path
-        else:
-            # For local development: try chrome then edge (most common on Windows)
-            # We try them one by one to avoid errors like "unsupported keyring"
-            for browser in ['chrome', 'edge']:
-                try:
-                    # We can't easily test this without running yt-dlp,
-                    # so we'll just set the option and let yt-dlp handle it.
-                    # Using a single browser is safer than a list in some yt-dlp versions.
-                    self.ydl_opts['cookiesfrombrowser'] = (browser, )
-                    break # Stop at the first one that might work
-                except:
-                    continue
 
     def get_video_info(self, url: str) -> Dict[str, Any]:
         """
@@ -54,11 +35,7 @@ class VideoDownloader:
         except Exception as e:
             error_msg = str(e)
             if "Instagram sent an empty media response" in error_msg or "login" in error_msg.lower():
-                 raise Exception("Instagram/Facebook requires authentication. Please follow the instructions in the Walkthrough to set up a 'cookies.txt' file for reliable extraction.")
-            
-            # Re-raise if it's a browser cookie locking error specifically to help user
-            if "Could not copy Chrome cookie database" in error_msg:
-                raise Exception("Access to Chrome cookies was blocked (likely because Chrome is open). Please close Chrome or use the 'cookies.txt' method described in the Walkthrough.")
+                 raise Exception("Instagram/Facebook requires authentication.")
                 
             raise Exception(f"Failed to extract video info: {error_msg}")
 
