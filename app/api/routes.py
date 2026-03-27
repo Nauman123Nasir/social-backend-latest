@@ -19,3 +19,28 @@ async def get_video_info(request: VideoInfoRequest):
     except Exception as e:
         logger.error(f"Error extracting info: {e}")
         raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/download")
+async def download_video(url: str, title: str = "video", ext: str = "mp4"):
+    """
+    Proxy endpoint to download a video directly as an attachment.
+    This solves CORS issues and forces a file download instead of playing in-browser.
+    """
+    import urllib.request
+    from fastapi.responses import StreamingResponse
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        response = urllib.request.urlopen(req)
+        def iterfile():
+            while True:
+                chunk = response.read(8192 * 4) # 32KB chunks
+                if not chunk:
+                    break
+                yield chunk
+        headers = {
+            'Content-Disposition': f'attachment; filename="{title}.{ext}"'
+        }
+        return StreamingResponse(iterfile(), media_type="application/octet-stream", headers=headers)
+    except Exception as e:
+        logger.error(f"Error proxying download: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
