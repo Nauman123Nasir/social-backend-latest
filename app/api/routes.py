@@ -37,8 +37,10 @@ async def download_video(url: str, title: str = "video", ext: str = "mp4"):
                 if not chunk:
                     break
                 yield chunk
+        import urllib.parse
+        encoded_title = urllib.parse.quote(title)
         headers = {
-            'Content-Disposition': f'attachment; filename="{title}.{ext}"'
+            'Content-Disposition': f"attachment; filename*=utf-8''{encoded_title}.{ext}"
         }
         return StreamingResponse(iterfile(), media_type="application/octet-stream", headers=headers)
     except Exception as e:
