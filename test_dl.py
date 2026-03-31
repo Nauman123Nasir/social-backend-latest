@@ -2,7 +2,7 @@ from app.services.downloader import downloader_service
 import json
 
 try:
-    url = "https://www.youtube.com/watch?v=jNQXAC9IVRw" # Me at the zoo (first youtube video)
+    url = "https://x.com/Pokemon/status/1769363063533285775" # sample twitter video
     info = downloader_service.get_video_info(url)
     print(json.dumps(info, indent=2))
 except Exception as e:

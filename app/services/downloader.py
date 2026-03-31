@@ -77,7 +77,8 @@ class VideoDownloader:
         if 'formats' in info:
             for f in info['formats']:
                 # Filter out audio-only or formats without a direct URL
-                if f.get('vcodec') != 'none' and f.get('ext') in ['mp4', 'webm'] and f.get('url'):
+                # and ensure the format has audio (acodec != 'none')
+                if f.get('vcodec') != 'none' and f.get('acodec') != 'none' and f.get('ext') in ['mp4', 'webm'] and f.get('url'):
                     # Simplify resolution string
                     height = f.get('height')
                     resolution = f"{height}p" if height else f.get('format_note', 'unknown')
