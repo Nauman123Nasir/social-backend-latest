@@ -29,17 +29,26 @@ class VideoDownloader:
         env_cookies = os.environ.get("YTDLP_COOKIES")
         if env_cookies:
             import tempfile
+            import logging
+            logger = logging.getLogger(__name__)
+            
             # Create a temporary file and write the cookies to it
             fd, temp_path = tempfile.mkstemp(suffix=".txt", text=True)
-            with os.fdopen(fd, 'w') as f:
-                # Replace escaped newlines with actual newlines if user pasted a single line string
-                f.write(env_cookies.replace('\\n', '\n'))
-            self.ydl_opts['cookiefile'] = temp_path
+            try:
+                with os.fdopen(fd, 'w') as f:
+                    # Replace escaped newlines with actual newlines
+                    cleaned_cookies = env_cookies.replace('\\n', '\n').strip()
+                    f.write(cleaned_cookies)
+                self.ydl_opts['cookiefile'] = temp_path
+                logger.info(f"Successfully loaded YTDLP_COOKIES from environment variable into {temp_path}")
+            except Exception as e:
+                logger.error(f"Failed to write YTDLP_COOKIES to temp file: {e}")
         else:
             # Fallback to local cookies.txt file
             cookies_path = os.path.join(os.getcwd(), 'cookies.txt')
             if os.path.exists(cookies_path):
                 self.ydl_opts['cookiefile'] = cookies_path
+
 
     def get_video_info(self, url: str) -> Dict[str, Any]:
         """
@@ -58,12 +67,19 @@ class VideoDownloader:
                 return self._parse_info(info, url)
         except Exception as e:
             error_msg = str(e)
-            if "Instagram sent an empty media response" in error_msg or "login" in error_msg.lower():
-                 raise Exception("Instagram/Facebook requires authentication.")
+            
+            # Categorize common errors into human-readable messages
+            if "available for registered users" in error_msg.lower() or "login" in error_msg.lower():
+                 raise Exception("This video is private or restricted to registered users only. We can't access it.")
+            if "Instagram sent an empty media response" in error_msg:
+                 raise Exception("Could not find video data. This link might point to a photo or private profile.")
             if "Sign in to confirm" in error_msg:
-                 raise Exception("YouTube blocked the request. Please try again later.")
+                 raise Exception("Access blocked by the platform. Please try again later.")
+            if "Video unavailable" in error_msg:
+                 raise Exception("The video you're looking for was deleted or is no longer available.")
                 
-            raise Exception(f"Failed to extract video info: {error_msg}")
+            # Generic clean error
+            raise Exception("Unable to extract video info. Please verify the URL is correct and public.")
 
     def _parse_info(self, info: Dict[str, Any], url: str) -> Dict[str, Any]:
         # Filter formats to only include those with video (and preferably audio)
@@ -85,6 +101,7 @@ class VideoDownloader:
                     formats.append({
                         'format_id': f.get('format_id', ''),
                         'ext': f.get('ext', ''),
+                        'height': height,
                         'resolution': resolution,
                         'filesize': f.get('filesize'),
                         'url': f.get('url', '')
@@ -94,6 +111,7 @@ class VideoDownloader:
             formats.append({
                 'format_id': 'default',
                 'ext': info.get('ext', 'mp4'),
+                'height': info.get('height', 0),
                 'resolution': 'default',
                 'url': info.get('url', '')
             })
@@ -106,6 +124,9 @@ class VideoDownloader:
             if key not in seen:
                 seen.add(key)
                 unique_formats.append(f)
+
+        # Sort formats by height (best quality first)
+        unique_formats.sort(key=lambda x: x.get('height', 0) or 0, reverse=True)
 
         return {
             'title': info.get('title', 'Unknown Title'),
