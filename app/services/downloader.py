@@ -108,7 +108,7 @@ class VideoDownloader:
                         'resolution': resolution,
                         'filesize': f.get('filesize'),
                         'url': f.get('url', ''),
-                        'needs_merging': acodec == 'none' # Mark if it needs FFmpeg
+                        'needs_merging': str(acodec).lower() == 'none' # Mark if it needs FFmpeg
                     })
         else:
             # Fallback

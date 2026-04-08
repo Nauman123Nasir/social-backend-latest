@@ -6,6 +6,27 @@ import logging
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+@router.get("/diag")
+async def diagnostic():
+    """
+    Diagnostic endpoint to verify environment setup (FFmpeg, yt-dlp)
+    """
+    import subprocess
+    results = {}
+    try:
+        ffmpeg_ver = subprocess.check_output(["ffmpeg", "-version"], stderr=subprocess.STDOUT).decode()
+        results["ffmpeg"] = ffmpeg_ver.splitlines()[0]
+    except Exception as e:
+        results["ffmpeg"] = f"Error: {str(e)}"
+        
+    try:
+        ytdlp_ver = subprocess.check_output(["yt-dlp", "--version"], stderr=subprocess.STDOUT).decode()
+        results["yt-dlp"] = ytdlp_ver.strip()
+    except Exception as e:
+        results["yt-dlp"] = f"Error: {str(e)}"
+
+    return results
+
 @router.post("/info", response_model=VideoInfoResponse)
 async def get_video_info(request: VideoInfoRequest):
     """
@@ -38,7 +59,10 @@ async def download_video(
     from fastapi.responses import StreamingResponse
 
     # CASE 1: High Quality Merging (Needs FFmpeg)
-    if needs_merging and original_url:
+    # We explicitly check for "true" as a string just in case FastAPI parsing is strict
+    is_merge_required = str(needs_merging).lower() == "true"
+    
+    if is_merge_required and original_url:
         try:
             logger.info(f"Starting smart merged download for: {original_url}")
             
@@ -47,6 +71,7 @@ async def download_video(
                 "yt-dlp",
                 "-f", "bestvideo+bestaudio/best",
                 "--merge-output-format", "mp4",
+                "--no-playlist",
                 "-o", "-",
                 original_url
             ]
@@ -54,13 +79,24 @@ async def download_video(
             if downloader_service.ydl_opts.get('cookiefile'):
                 cmd.extend(["--cookies", downloader_service.ydl_opts['cookiefile']])
 
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            # Execute with pipes
+            process = subprocess.Popen(
+                cmd, 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.PIPE, # Capture errors
+                bufsize=1024 * 1024 # Buffer to keep it smooth
+            )
 
             def stream_output():
                 try:
+                    # Monitor stderr in a separate thin thread or just check it
                     while True:
-                        chunk = process.stdout.read(1024 * 32) # 32KB chunks
+                        chunk = process.stdout.read(1024 * 64) 
                         if not chunk:
+                            # Check if process failed
+                            err = process.stderr.read().decode()
+                            if err and process.returncode != 0:
+                                logger.error(f"yt-dlp error output: {err}")
                             break
                         yield chunk
                 finally:
