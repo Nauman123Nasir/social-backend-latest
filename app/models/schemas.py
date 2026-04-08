@@ -7,6 +7,7 @@ class VideoFormat(BaseModel):
     resolution: str
     filesize: Optional[int] = None
     url: str
+    needs_merging: bool = False
 
 class VideoInfoRequest(BaseModel):
     url: HttpUrl

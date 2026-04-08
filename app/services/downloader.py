@@ -92,32 +92,39 @@ class VideoDownloader:
         
         if 'formats' in info:
             for f in info['formats']:
-                # Filter out audio-only or formats without a direct URL
-                # and ensure the format has audio (acodec != 'none')
-                if f.get('vcodec') != 'none' and f.get('acodec') != 'none' and f.get('ext') in ['mp4', 'webm'] and f.get('url'):
-                    # Simplify resolution string
+                # Filter formats with actual video
+                vcodec = f.get('vcodec', 'none')
+                acodec = f.get('acodec', 'none')
+                
+                # We now allow formats where acodec is 'none' (video only), as long as it has a direct URL
+                if vcodec != 'none' and f.get('ext') in ['mp4', 'webm'] and f.get('url'):
                     height = f.get('height')
                     resolution = f"{height}p" if height else f.get('format_note', 'unknown')
                     
                     formats.append({
                         'format_id': f.get('format_id', ''),
-                        'ext': f.get('ext', ''),
-                        'height': height,
+                        'ext': f.get('ext', f.get('video_ext', 'mp4')),
+                        'height': height or 0,
                         'resolution': resolution,
                         'filesize': f.get('filesize'),
-                        'url': f.get('url', '')
+                        'url': f.get('url', ''),
+                        'needs_merging': acodec == 'none' # Mark if it needs FFmpeg
                     })
         else:
-            # Fallback for platforms that might just return a single direct URL
+            # Fallback
             formats.append({
                 'format_id': 'default',
                 'ext': info.get('ext', 'mp4'),
                 'height': info.get('height', 0),
                 'resolution': 'default',
-                'url': info.get('url', '')
+                'url': info.get('url', ''),
+                'needs_merging': False
             })
 
-        # Remove duplicates based on resolution and ext
+        # Sort by resolution (desc) and then prioritize merged formats (needs_merging=False) for the same resolution
+        formats.sort(key=lambda x: (x.get('height', 0), not x['needs_merging']), reverse=True)
+
+        # Remove duplicates (keep the best one for each resolution/ext combo)
         unique_formats = []
         seen = set()
         for f in formats:
@@ -125,9 +132,6 @@ class VideoDownloader:
             if key not in seen:
                 seen.add(key)
                 unique_formats.append(f)
-
-        # Sort formats by height (best quality first)
-        unique_formats.sort(key=lambda x: x.get('height', 0) or 0, reverse=True)
 
         return {
             'title': info.get('title', 'Unknown Title'),
