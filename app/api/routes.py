@@ -67,10 +67,13 @@ async def download_video(
             logger.info(f"Starting smart merged download for: {original_url}")
             
             # yt-dlp command to merge best video and best audio and stream to stdout
+            # --postprocessor-args passes fragmented MP4 flags to FFmpeg so it can
+            # write the output sequentially without seeking (required for piping)
             cmd = [
                 "yt-dlp",
                 "-f", "bestvideo+bestaudio/best",
                 "--merge-output-format", "mp4",
+                "--postprocessor-args", "ffmpeg:-movflags frag_keyframe+empty_moov+default_base_moof",
                 "--no-playlist",
                 "-o", "-",
                 original_url
