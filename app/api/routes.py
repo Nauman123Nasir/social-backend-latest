@@ -27,6 +27,48 @@ async def diagnostic():
 
     return results
 
+@router.get("/test-merge")
+async def test_merge(url: str):
+    """
+    Debug endpoint: runs yt-dlp merge to a temp file and returns full logs.
+    Usage: /api/test-merge?url=<encoded_instagram_url>
+    """
+    import subprocess, tempfile, os
+    tmp_dir = tempfile.mkdtemp()
+    output_path = os.path.join(tmp_dir, "output.mp4")
+
+    cmd = [
+        "yt-dlp",
+        "-f", "bestvideo+bestaudio/best",
+        "--merge-output-format", "mp4",
+        "--no-playlist",
+        "-o", output_path,
+        url
+    ]
+
+    if downloader_service.ydl_opts.get('cookiefile'):
+        cmd.extend(["--cookies", downloader_service.ydl_opts['cookiefile']])
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        file_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
+        return {
+            "returncode": result.returncode,
+            "stdout": result.stdout[-3000:],  # last 3000 chars
+            "stderr": result.stderr[-3000:],
+            "output_file_exists": os.path.exists(output_path),
+            "output_file_size_bytes": file_size,
+            "cmd": " ".join(cmd)
+        }
+    except Exception as e:
+        return {"error": str(e)}
+    finally:
+        try:
+            if os.path.exists(output_path): os.remove(output_path)
+            os.rmdir(tmp_dir)
+        except Exception:
+            pass
+
 @router.post("/info", response_model=VideoInfoResponse)
 async def get_video_info(request: VideoInfoRequest):
     """
