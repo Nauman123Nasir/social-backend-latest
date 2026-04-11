@@ -83,6 +83,22 @@ async def get_video_info(request: VideoInfoRequest):
         logger.error(f"Error extracting info: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
+@router.get("/download-debug")
+async def download_debug(
+    url: str = "",
+    needs_merging: bool = False,
+    original_url: str = ""
+):
+    """Returns what path the download endpoint would take, for debugging."""
+    is_merge_required = str(needs_merging).lower() == "true"
+    return {
+        "needs_merging_raw": needs_merging,
+        "needs_merging_type": str(type(needs_merging)),
+        "is_merge_required": is_merge_required,
+        "original_url_present": bool(original_url),
+        "would_take_path": "merge" if (is_merge_required and original_url) else "proxy"
+    }
+
 @router.get("/download")
 async def download_video(
     url: str, 
@@ -164,7 +180,8 @@ async def download_video(
 
             headers = {
                 'Content-Disposition': f"attachment; filename*=utf-8''{encoded_title}.mp4",
-                'Content-Length': str(os.path.getsize(output_path))
+                'Content-Length': str(os.path.getsize(output_path)),
+                'X-Path-Taken': 'merge'
             }
             return StreamingResponse(stream_and_cleanup(), media_type="video/mp4", headers=headers)
 
@@ -195,7 +212,10 @@ async def download_video(
                 yield chunk
 
         encoded_title = urllib.parse.quote(title)
-        headers = { 'Content-Disposition': f"attachment; filename*=utf-8''{encoded_title}.{ext}" }
+        headers = {
+            'Content-Disposition': f"attachment; filename*=utf-8''{encoded_title}.{ext}",
+            'X-Path-Taken': 'proxy'
+        }
         return StreamingResponse(iterfile(), media_type="application/octet-stream", headers=headers)
     except Exception as e:
         logger.error(f"Error proxying download: {e}")
