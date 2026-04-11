@@ -56,60 +56,76 @@ async def download_video(
     import urllib.request
     import urllib.parse
     import subprocess
-    from fastapi.responses import StreamingResponse
+    import tempfile
+    import os
+    from fastapi.responses import StreamingResponse, FileResponse
 
     # CASE 1: High Quality Merging (Needs FFmpeg)
-    # We explicitly check for "true" as a string just in case FastAPI parsing is strict
     is_merge_required = str(needs_merging).lower() == "true"
     
     if is_merge_required and original_url:
         try:
-            logger.info(f"Starting smart merged download for: {original_url}")
+            logger.info(f"Starting temp-file merged download for: {original_url}")
             
-            # yt-dlp command to merge best video and best audio and stream to stdout
-            # --postprocessor-args passes fragmented MP4 flags to FFmpeg so it can
-            # write the output sequentially without seeking (required for piping)
+            # Create a temp directory that persists until we stream the file
+            tmp_dir = tempfile.mkdtemp()
+            output_path = os.path.join(tmp_dir, "output.mp4")
+
+            # yt-dlp downloads DASH segments + merges with FFmpeg into a real MP4 file
+            # Piping DASH to stdout doesn't work — segments must be assembled on disk first
             cmd = [
                 "yt-dlp",
                 "-f", "bestvideo+bestaudio/best",
                 "--merge-output-format", "mp4",
-                "--postprocessor-args", "ffmpeg:-movflags frag_keyframe+empty_moov+default_base_moof",
                 "--no-playlist",
-                "-o", "-",
+                "-o", output_path,
                 original_url
             ]
             
             if downloader_service.ydl_opts.get('cookiefile'):
                 cmd.extend(["--cookies", downloader_service.ydl_opts['cookiefile']])
 
-            # Execute with pipes
-            process = subprocess.Popen(
-                cmd, 
-                stdout=subprocess.PIPE, 
-                stderr=subprocess.PIPE, # Capture errors
-                bufsize=1024 * 1024 # Buffer to keep it smooth
+            logger.info(f"Running yt-dlp merge command: {' '.join(cmd)}")
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=300  # 5 min max
             )
 
-            def stream_output():
-                try:
-                    # Monitor stderr in a separate thin thread or just check it
-                    while True:
-                        chunk = process.stdout.read(1024 * 64) 
-                        if not chunk:
-                            # Check if process failed
-                            err = process.stderr.read().decode()
-                            if err and process.returncode != 0:
-                                logger.error(f"yt-dlp error output: {err}")
-                            break
-                        yield chunk
-                finally:
-                    process.terminate()
+            if result.returncode != 0:
+                logger.error(f"yt-dlp merge failed: {result.stderr}")
+                raise Exception(f"yt-dlp failed: {result.stderr[:200]}")
+
+            if not os.path.exists(output_path):
+                raise Exception("Output file not created by yt-dlp")
+
+            logger.info(f"Merge successful, streaming file: {output_path}")
 
             encoded_title = urllib.parse.quote(title)
+
+            def stream_and_cleanup():
+                try:
+                    with open(output_path, "rb") as f:
+                        while True:
+                            chunk = f.read(1024 * 64)
+                            if not chunk:
+                                break
+                            yield chunk
+                finally:
+                    # Clean up temp files after streaming
+                    try:
+                        os.remove(output_path)
+                        os.rmdir(tmp_dir)
+                    except Exception:
+                        pass
+
             headers = {
-                'Content-Disposition': f"attachment; filename*=utf-8''{encoded_title}.mp4"
+                'Content-Disposition': f"attachment; filename*=utf-8''{encoded_title}.mp4",
+                'Content-Length': str(os.path.getsize(output_path))
             }
-            return StreamingResponse(stream_output(), media_type="video/mp4", headers=headers)
+            return StreamingResponse(stream_and_cleanup(), media_type="video/mp4", headers=headers)
+
         except Exception as e:
             logger.error(f"Smart merge failed: {e}. Falling back to standard proxy.")
 
