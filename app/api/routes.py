@@ -121,6 +121,13 @@ async def download_video(
     # CASE 1: High Quality Merging (Needs FFmpeg)
     is_merge_required = str(needs_merging).lower() == "true"
     
+    # TikTok's CDN tightly couples the direct download URL with the exact headers/signatures generated 
+    # during extraction. A simple urllib proxy request will fail with 403 Forbidden.
+    # By forcing TikTok through the yt-dlp execution block, yt-dlp natively downloads the video 
+    # using its own correct session state.
+    if original_url and "tiktok.com" in original_url.lower():
+        is_merge_required = True
+    
     if is_merge_required and original_url:
         try:
             logger.info(f"Starting temp-file merged download for: {original_url}")
@@ -134,6 +141,7 @@ async def download_video(
             cmd = [
                 "yt-dlp",
                 "-f", "bestvideo+bestaudio/best",
+                "-S", "vcodec:h264,res,acodec:m4a",
                 "--merge-output-format", "mp4",
                 "--no-playlist",
                 "-o", output_path,
@@ -205,7 +213,13 @@ async def download_video(
             hostname.startswith("192.168.") or hostname.startswith("172.")):
             raise HTTPException(status_code=403, detail="Target host forbidden.")
 
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        proxy_headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Referer': 'https://www.tiktok.com/',
+            'Accept': '*/*',
+            'Accept-Language': 'en-US,en;q=0.9'
+        }
+        req = urllib.request.Request(url, headers=proxy_headers)
         response = urllib.request.urlopen(req, timeout=15)
         
         def iterfile():

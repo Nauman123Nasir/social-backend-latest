@@ -10,6 +10,7 @@ class VideoDownloader:
             'no_warnings': True,
             'extract_flat': False,
             'getcomments': False,
+            'format_sort': ['vcodec:h264', 'res', 'acodec:m4a'],
             'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
             'http_headers': {
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
@@ -54,8 +55,6 @@ class VideoDownloader:
         """
         Extracts video metadata and direct download URLs using yt-dlp
         """
-        if "tiktok.com" in url.lower():
-            raise Exception("TikTok is not supported.")
         if "youtube.com" in url.lower() or "youtu.be" in url.lower():
             raise Exception("YouTube downloads are temporarily disabled.")
             
