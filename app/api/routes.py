@@ -186,7 +186,11 @@ async def download_video(
             return StreamingResponse(stream_and_cleanup(), media_type="video/mp4", headers=headers)
 
         except Exception as e:
-            logger.error(f"Smart merge failed: {e}. Falling back to standard proxy.")
+            logger.error(f"Smart merge failed: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Merge failed: {str(e)}"
+            )
 
     # CASE 2: Standard Proxy (Fastest for pre-merged files)
     try:
