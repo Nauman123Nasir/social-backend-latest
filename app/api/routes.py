@@ -121,11 +121,13 @@ async def download_video(
     # CASE 1: High Quality Merging (Needs FFmpeg)
     is_merge_required = str(needs_merging).lower() == "true"
     
-    # TikTok's CDN tightly couples the direct download URL with the exact headers/signatures generated 
-    # during extraction. A simple urllib proxy request will fail with 403 Forbidden.
-    # By forcing TikTok through the yt-dlp execution block, yt-dlp natively downloads the video 
-    # using its own correct session state.
-    if original_url and "tiktok.com" in original_url.lower():
+    # Force specific platforms to use yt-dlp merge directly.
+    # - TikTok: CDN headers restrict direct urllib proxy, needs yt-dlp session.
+    # - Instagram/Twitter: Direct proxy sometimes returns formats or profiles that 
+    #   iOS Safari fails to render visually (audio-only bug). Forcing yt-dlp merge 
+    #   ensures the file is re-muxed into strict H.264 mp4 container for perfect iOS playback.
+    target_platforms = ["tiktok.com", "instagram.com", "twitter.com", "x.com"]
+    if original_url and any(p in original_url.lower() for p in target_platforms):
         is_merge_required = True
     
     if is_merge_required and original_url:
@@ -234,7 +236,8 @@ async def download_video(
             'Content-Disposition': f"attachment; filename*=utf-8''{encoded_title}.{ext}",
             'X-Path-Taken': 'proxy'
         }
-        return StreamingResponse(iterfile(), media_type="application/octet-stream", headers=headers)
+        mime_type = f"video/{ext.lower()}" if ext.lower() in ["mp4", "webm"] else "application/octet-stream"
+        return StreamingResponse(iterfile(), media_type=mime_type, headers=headers)
     except Exception as e:
         logger.error(f"Error proxying download: {e}")
         raise HTTPException(status_code=400, detail=str(e))
