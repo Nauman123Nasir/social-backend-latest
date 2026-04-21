@@ -106,7 +106,8 @@ async def download_video(
     title: str = "video", 
     ext: str = "mp4", 
     needs_merging: bool = False, 
-    original_url: str = ""
+    original_url: str = "",
+    token: str = None
 ):
     """
     Proxy endpoint to download a video directly as an attachment.
@@ -202,16 +203,18 @@ async def download_video(
             }
             
             mime_type = "application/octet-stream" if is_ios else "video/mp4"
-            return StreamingResponse(stream_and_cleanup(), media_type=mime_type, headers=headers)
+            response = StreamingResponse(stream_and_cleanup(), media_type=mime_type, headers=headers)
+            if token:
+                response.set_cookie(key=f"download_started_{token}", value="true", path="/", samesite="lax")
+            return response
 
         except Exception as e:
-            logger.error(f"Smart merge failed: {e}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Merge failed: {str(e)}"
-            )
+            logger.error(f"Smart merge failed for {original_url}, falling back to proxy: {e}")
+            # If merge fails (e.g. yt-dlp API error), we fall through to CASE 2 (Proxy)
+            # which will use the direct 'url' parameter provided by the frontend.
+            pass
 
-    # CASE 2: Standard Proxy (Fastest for pre-merged files)
+    # CASE 2: Standard Proxy (Fastest for pre-merged files or fallback)
     try:
         user_agent = request.headers.get("User-Agent", "").lower()
         is_ios = any(x in user_agent for x in ["iphone", "ipad", "ipod"])
@@ -259,7 +262,10 @@ async def download_video(
         else:
             mime_type = f"video/{ext.lower()}" if ext.lower() in ["mp4", "webm"] else "application/octet-stream"
             
-        return StreamingResponse(iterfile(), media_type=mime_type, headers=headers)
+        res = StreamingResponse(iterfile(), media_type=mime_type, headers=headers)
+        if token:
+            res.set_cookie(key=f"download_started_{token}", value="true", path="/", samesite="lax")
+        return res
     except Exception as e:
         logger.error(f"Error proxying download: {e}")
         raise HTTPException(status_code=400, detail=str(e))
