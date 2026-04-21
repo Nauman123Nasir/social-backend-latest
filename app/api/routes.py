@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from app.models.schemas import VideoInfoRequest, VideoInfoResponse
 from app.services.downloader import downloader_service
 import logging
@@ -101,6 +101,7 @@ async def download_debug(
 
 @router.get("/download")
 async def download_video(
+    request: Request,
     url: str, 
     title: str = "video", 
     ext: str = "mp4", 
@@ -170,30 +171,22 @@ async def download_video(
 
             logger.info(f"Merge successful, streaming file: {output_path}")
 
+            # Detect iOS
+            user_agent = request.headers.get("User-Agent", "").lower()
+            is_ios = any(x in user_agent for x in ["iphone", "ipad", "ipod"])
+
+            import re
+            ascii_title = re.sub(r'[^\x00-\x7F]+', '', title).replace('"', '') or "video"
             encoded_title = urllib.parse.quote(title)
 
-            def stream_and_cleanup():
-                try:
-                    with open(output_path, "rb") as f:
-                        while True:
-                            chunk = f.read(1024 * 64)
-                            if not chunk:
-                                break
-                            yield chunk
-                finally:
-                    # Clean up temp files after streaming
-                    try:
-                        os.remove(output_path)
-                        os.rmdir(tmp_dir)
-                    except Exception:
-                        pass
-
             headers = {
-                'Content-Disposition': f"attachment; filename*=utf-8''{encoded_title}.mp4",
+                'Content-Disposition': f"attachment; filename=\"{ascii_title}.mp4\"; filename*=utf-8''{encoded_title}.mp4",
                 'Content-Length': str(os.path.getsize(output_path)),
                 'X-Path-Taken': 'merge'
             }
-            return StreamingResponse(stream_and_cleanup(), media_type="video/mp4", headers=headers)
+            
+            mime_type = "application/octet-stream" if is_ios else "video/mp4"
+            return StreamingResponse(stream_and_cleanup(), media_type=mime_type, headers=headers)
 
         except Exception as e:
             logger.error(f"Smart merge failed: {e}")
@@ -204,6 +197,9 @@ async def download_video(
 
     # CASE 2: Standard Proxy (Fastest for pre-merged files)
     try:
+        user_agent = request.headers.get("User-Agent", "").lower()
+        is_ios = any(x in user_agent for x in ["iphone", "ipad", "ipod"])
+        
         parsed_url = urllib.parse.urlparse(url)
         if parsed_url.scheme not in ["http", "https"]:
             raise HTTPException(status_code=403, detail="URL scheme not allowed.")
@@ -231,13 +227,26 @@ async def download_video(
                     break
                 yield chunk
 
+        # Clean title for basic filename (ASCII only for fallback)
+        import re
+        ascii_title = re.sub(r'[^\x00-\x7F]+', '', title).replace('"', '') or "video"
         encoded_title = urllib.parse.quote(title)
+        
         headers = {
-            'Content-Disposition': f"attachment; filename*=utf-8''{encoded_title}.{ext}",
+            'Content-Disposition': f"attachment; filename=\"{ascii_title}.{ext}\"; filename*=utf-8''{encoded_title}.{ext}",
             'X-Path-Taken': 'proxy'
         }
-        mime_type = f"video/{ext.lower()}" if ext.lower() in ["mp4", "webm"] else "application/octet-stream"
+        
+        # On iOS, forcing application/octet-stream is more reliable for triggering a download prompt
+        if is_ios:
+            mime_type = "application/octet-stream"
+        else:
+            mime_type = f"video/{ext.lower()}" if ext.lower() in ["mp4", "webm"] else "application/octet-stream"
+            
         return StreamingResponse(iterfile(), media_type=mime_type, headers=headers)
+    except Exception as e:
+        logger.error(f"Error proxying download: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error proxying download: {e}")
         raise HTTPException(status_code=400, detail=str(e))
