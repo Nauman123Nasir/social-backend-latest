@@ -179,6 +179,22 @@ async def download_video(
             ascii_title = re.sub(r'[^\x00-\x7F]+', '', title).replace('"', '') or "video"
             encoded_title = urllib.parse.quote(title)
 
+            def stream_and_cleanup():
+                try:
+                    with open(output_path, "rb") as f:
+                        while True:
+                            chunk = f.read(1024 * 64)
+                            if not chunk:
+                                break
+                            yield chunk
+                finally:
+                    # Clean up temp files after streaming
+                    try:
+                        os.remove(output_path)
+                        os.rmdir(tmp_dir)
+                    except Exception:
+                        pass
+
             headers = {
                 'Content-Disposition': f"attachment; filename=\"{ascii_title}.mp4\"; filename*=utf-8''{encoded_title}.mp4",
                 'Content-Length': str(os.path.getsize(output_path)),
@@ -244,9 +260,6 @@ async def download_video(
             mime_type = f"video/{ext.lower()}" if ext.lower() in ["mp4", "webm"] else "application/octet-stream"
             
         return StreamingResponse(iterfile(), media_type=mime_type, headers=headers)
-    except Exception as e:
-        logger.error(f"Error proxying download: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error proxying download: {e}")
         raise HTTPException(status_code=400, detail=str(e))
