@@ -6,6 +6,10 @@ import logging
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+# Global state to track download start signals (cross-origin compatible)
+# In production with multiple instances, this should be replaced by Redis
+download_status = {}
+
 @router.get("/diag")
 async def diagnostic():
     """
@@ -98,6 +102,18 @@ async def download_debug(
         "original_url_present": bool(original_url),
         "would_take_path": "merge" if (is_merge_required and original_url) else "proxy"
     }
+
+@router.get("/download-status/{token}")
+async def get_download_status(token: str):
+    """
+    Checks if a specific download has started streaming.
+    Used by the frontend to hide the loader overlay.
+    """
+    if token in download_status:
+        # Clear it immediately once claimed to save memory
+        del download_status[token]
+        return {"started": True}
+    return {"started": False}
 
 @router.get("/download")
 async def download_video(
@@ -202,11 +218,12 @@ async def download_video(
                 'X-Path-Taken': 'merge'
             }
             
+            
             mime_type = "application/octet-stream" if is_ios else "video/mp4"
-            response = StreamingResponse(stream_and_cleanup(), media_type=mime_type, headers=headers)
             if token:
-                response.set_cookie(key=f"download_started_{token}", value="true", path="/", samesite="lax")
-            return response
+                download_status[token] = True
+                
+            return StreamingResponse(stream_and_cleanup(), media_type=mime_type, headers=headers)
 
         except Exception as e:
             logger.error(f"Smart merge failed for {original_url}, falling back to proxy: {e}")
@@ -262,10 +279,10 @@ async def download_video(
         else:
             mime_type = f"video/{ext.lower()}" if ext.lower() in ["mp4", "webm"] else "application/octet-stream"
             
-        res = StreamingResponse(iterfile(), media_type=mime_type, headers=headers)
         if token:
-            res.set_cookie(key=f"download_started_{token}", value="true", path="/", samesite="lax")
-        return res
+            download_status[token] = True
+            
+        return StreamingResponse(iterfile(), media_type=mime_type, headers=headers)
     except Exception as e:
         logger.error(f"Error proxying download: {e}")
         raise HTTPException(status_code=400, detail=str(e))
