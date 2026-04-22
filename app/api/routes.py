@@ -160,9 +160,10 @@ async def download_video(
             # Piping DASH to stdout doesn't work — segments must be assembled on disk first
             cmd = [
                 "yt-dlp",
-                "-f", "bestvideo+bestaudio/best",
+                "-f", "bv*[vcodec^=avc]+ba[acodec^=mp4a]/b[ext=mp4]/b",
                 "-S", "vcodec:h264,res,acodec:m4a",
                 "--merge-output-format", "mp4",
+                "--postprocessor-args", "ffmpeg:-pix_fmt yuv420p -movflags +faststart",
                 "--no-playlist",
                 "-o", output_path,
                 original_url

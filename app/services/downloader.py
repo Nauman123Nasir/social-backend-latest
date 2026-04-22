@@ -96,7 +96,7 @@ class VideoDownloader:
                 acodec = f.get('acodec', 'none')
                 
                 # We now allow formats where acodec is 'none' (video only), as long as it has a direct URL
-                if vcodec != 'none' and f.get('ext') in ['mp4', 'webm'] and f.get('url'):
+                if vcodec != 'none' and f.get('ext') in ['mp4'] and f.get('url'):
                     height = f.get('height')
                     resolution = f"{height}p" if height else f.get('format_note', 'unknown')
                     
